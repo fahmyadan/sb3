@@ -1,4 +1,10 @@
 import os
+import sys
+from pathlib import Path 
+
+if True:
+    sys.path.append(str(Path(__file__).parents[1]))
+
 
 from stable_baselines3.a2c import A2C
 from stable_baselines3.common.utils import get_system_info
