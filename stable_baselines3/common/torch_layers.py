@@ -59,6 +59,7 @@ class NatureCNN(BaseFeaturesExtractor):
         or not (this disables dtype and bounds checks): when True, it only checks that
         the space is a Box and has 3 dimensions.
         Otherwise, it checks that it has expected dtype (uint8) and bounds (values in [0, 255]).
+    :param shallow: Boolean to change the cnn architecture, opting for a shallow design with fewer learnable parameters
     """
 
     def __init__(
@@ -66,6 +67,7 @@ class NatureCNN(BaseFeaturesExtractor):
         observation_space: gym.Space,
         features_dim: int = 512,
         normalized_image: bool = False,
+        shallow: bool = False
     ) -> None:
         assert isinstance(observation_space, spaces.Box), (
             "NatureCNN must be used with a gym.spaces.Box ",
@@ -86,15 +88,29 @@ class NatureCNN(BaseFeaturesExtractor):
             "https://stable-baselines3.readthedocs.io/en/master/guide/custom_env.html"
         )
         n_input_channels = observation_space.shape[0]
-        self.cnn = nn.Sequential(
-            nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(),
-            nn.Flatten(),
-        )
+
+        if not shallow:
+            self.cnn = nn.Sequential(
+                nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0),
+                nn.ReLU(),
+                nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
+                nn.ReLU(),
+                nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+                nn.ReLU(),
+                nn.Flatten(),
+            )
+        else: 
+            self.cnn = nn.Sequential(
+                nn.Conv2d(n_input_channels, 8, kernel_size=3, stride=2, padding=1),  # Adjusted kernel size and stride
+                nn.ReLU(),
+                nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),  # Adjusted kernel size and added padding
+                nn.ReLU(),
+                nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),  # Added padding
+                nn.ReLU(),
+                nn.Flatten(),
+            )
+
+
 
         # Compute shape by doing one forward pass
         with th.no_grad():
