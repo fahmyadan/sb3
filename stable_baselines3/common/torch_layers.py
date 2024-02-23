@@ -45,6 +45,7 @@ class FlattenExtractor(BaseFeaturesExtractor):
         return self.flatten(observations)
 
 
+
 class NatureCNN(BaseFeaturesExtractor):
     """
     CNN from DQN Nature paper:
@@ -120,6 +121,76 @@ class NatureCNN(BaseFeaturesExtractor):
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
         return self.linear(self.cnn(observations))
+
+
+class TemporalCNN(NatureCNN):
+    
+
+    def __init__(self,
+                observation_space: gym.Space,
+                features_dim: int = 512,
+                normalized_image: bool = False,
+                shallow: bool = False, 
+                n_rnn: int = 5, 
+                hidden_size: int = 5, 
+                n_envs: int = 4, 
+                custom: bool = True
+    ):
+
+        super().__init__(observation_space, features_dim, normalized_image, shallow)
+
+        self.feats, h, w = observation_space.shape
+        self.n_envs = n_envs
+        self.n_rnn = n_rnn
+        self.hidden_size = hidden_size
+
+        input_dims = th.tensor(observation_space.sample()).view(self.feats, -1, 1).shape
+
+        self.lstms = nn.ModuleList(
+                    [nn.LSTM(input_size= input_dims[-1], hidden_size=hidden_size,num_layers=n_rnn, batch_first=True) for _ in range(self.feats)]
+        )
+        self.device = 'cuda' if th.cuda.is_available() else 'cpu'
+        self.init_states()
+
+
+    def init_states(self):
+        self.hidden_state = [th.zeros((self.n_rnn, self.n_envs, self.hidden_size)).to(self.device) for _ in range(self.feats)]
+        self.cell_state = [th.zeros((self.n_rnn, self.n_envs, self.hidden_size)).to(self.device) for _ in range(self.feats)]
+
+  
+        
+    
+    def forward(self, observations: th.Tensor):
+        batch_size = observations.size(0)
+        if batch_size != self.n_envs:  # Reinitialize states if batch size changes
+            self.n_envs = batch_size
+            self.init_states()
+
+        cnn_features = self.linear(self.cnn(observations))
+
+        lstm_outs = {}
+        all_outs = []
+
+        for i in range(self.feats):
+            feature_grid = observations[:, i, :, :].reshape(batch_size, -1, 1)
+
+            output, (self.hidden_state[i], self.cell_state[i]) = self.lstms[i](feature_grid, (self.hidden_state[i], self.cell_state[i]))
+            lstm_outs[i] = output, (self.hidden_state, self.cell_state)
+            output = th.flatten(output, start_dim=1, end_dim=2)
+            all_outs.append(output)
+        
+        rnn_out = th.cat(all_outs, dim=1)
+
+        outs = th.cat([cnn_features, rnn_out], dim=1)
+
+        return outs
+
+
+
+        
+
+
+
 
 
 def create_mlp(
@@ -233,6 +304,65 @@ class MlpExtractor(nn.Module):
     def forward(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
         """
         :return: latent_policy, latent_value of the specified network.
+            If all layers are shared, then ``latent_policy == latent_value``
+        """
+        return self.forward_actor(features), self.forward_critic(features)
+
+    def forward_actor(self, features: th.Tensor) -> th.Tensor:
+        return self.policy_net(features)
+
+    def forward_critic(self, features: th.Tensor) -> th.Tensor:
+        return self.value_net(features)
+
+
+class CustomNetwork(nn.Module):
+    """
+    Custom network for policy and value function.
+    It receives as input the features extracted by the features extractor.
+
+    :param feature_dim: dimension of the features extracted with the features_extractor (e.g. features from a CNN)
+    :param last_layer_dim_pi: (int) number of units for the last layer of the policy network
+    :param last_layer_dim_vf: (int) number of units for the last layer of the value network
+    """
+
+    def __init__(
+        self,
+        feature_dim: int,
+        observation_space: gym.spaces,
+        hidden_size: int,
+        last_layer_dim_pi: int = 64,
+        last_layer_dim_vf: int = 64,
+        device: Union[th.device, str] = "auto"
+    ):
+        super().__init__()
+
+        cnn_features = feature_dim
+        obs_features, obs_h, obs_w = observation_space.shape
+
+        lstm_output_features = obs_h * obs_w * hidden_size * obs_features
+        total_feature_size = cnn_features + lstm_output_features
+
+        self.latent_dim_pi = last_layer_dim_pi
+        self.latent_dim_vf = last_layer_dim_vf
+
+
+        # IMPORTANT:
+        # Save output dimensions, used to create the distributions
+        # self.latent_dim_pi = last_layer_dim_pi
+        # self.latent_dim_vf = last_layer_dim_vf
+
+        # Policy network
+        self.policy_net = nn.Sequential(
+            nn.Linear(total_feature_size, last_layer_dim_pi), nn.ReLU()
+        )
+        # Value network
+        self.value_net = nn.Sequential(
+            nn.Linear(total_feature_size, last_layer_dim_vf), nn.ReLU()
+        )
+
+    def forward(self, features: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+        """
+        :return: (th.Tensor, th.Tensor) latent_policy, latent_value of the specified network.
             If all layers are shared, then ``latent_policy == latent_value``
         """
         return self.forward_actor(features), self.forward_critic(features)
