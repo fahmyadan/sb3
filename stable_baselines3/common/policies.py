@@ -29,6 +29,8 @@ from stable_baselines3.common.torch_layers import (
     MlpExtractor,
     NatureCNN,
     create_mlp,
+    TemporalCNN, 
+    CustomNetwork
 )
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 from stable_baselines3.common.utils import get_device, is_vectorized_observation, obs_as_tensor
@@ -288,9 +290,15 @@ class BasePolicy(BaseModel, ABC):
 
     features_extractor: BaseFeaturesExtractor
 
+    feature_extractor_aliases = {
+        "NatureCNN": NatureCNN,
+        "TemporalCNN": TemporalCNN,
+    }
+
     def __init__(self, *args, squash_output: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self._squash_output = squash_output
+        self.features_extractor_class = self._get_feats_from_name(args[2])
 
     @staticmethod
     def _dummy_schedule(progress_remaining: float) -> float:
@@ -325,6 +333,22 @@ class BasePolicy(BaseModel, ABC):
         :param deterministic: Whether to use stochastic or deterministic actions
         :return: Taken action according to the policy
         """
+    def _get_feats_from_name(self, feature_extractor_name: str) -> Type[BaseFeaturesExtractor]:
+        """
+        Get a policy class from its name representation.
+
+        The goal here is to standardize policy naming, e.g.
+        all algorithms can call upon "MlpPolicy" or "CnnPolicy",
+        and they receive respective policies that work for them.
+
+        :param policy_name: Alias of the policy
+        :return: A policy class (type)
+        """
+
+        if feature_extractor_name in self.feature_extractor_aliases:
+            return self.feature_extractor_aliases[feature_extractor_name]
+        else:
+            raise ValueError(f"Feature Extractor {feature_extractor_name} unknown")
 
     def predict(
         self,
@@ -479,6 +503,7 @@ class ActorCriticPolicy(BasePolicy):
             squash_output=squash_output,
             normalize_images=normalize_images,
         )
+        features_extractor_class = self.features_extractor_class
 
         if isinstance(net_arch, list) and len(net_arch) > 0 and isinstance(net_arch[0], dict):
             warnings.warn(
@@ -813,6 +838,7 @@ class ActorCriticCnnPolicy(ActorCriticPolicy):
         optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
     ):
+
         super().__init__(
             observation_space,
             action_space,
@@ -832,6 +858,65 @@ class ActorCriticCnnPolicy(ActorCriticPolicy):
             optimizer_class,
             optimizer_kwargs,
         )
+
+class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
+    def __init__(
+        self,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        lr_schedule: Schedule,
+        net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
+        activation_fn: Type[nn.Module] = nn.Tanh,
+        ortho_init: bool = True,
+        use_sde: bool = False,
+        log_std_init: float = 0.0,
+        full_std: bool = True,
+        use_expln: bool = False,
+        squash_output: bool = False,
+        features_extractor_class: Type[BaseFeaturesExtractor] = NatureCNN,
+        features_extractor_kwargs: Optional[Dict[str, Any]] = None,
+        share_features_extractor: bool = True,
+        normalize_images: bool = True,
+        optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
+        optimizer_kwargs: Optional[Dict[str, Any]] = None,
+    ):  
+        self.custom = features_extractor_kwargs['custom']
+        super().__init__(
+            observation_space,
+            action_space,
+            lr_schedule,
+            net_arch,
+            activation_fn,
+            ortho_init,
+            use_sde,
+            log_std_init,
+            full_std,
+            use_expln,
+            squash_output,
+            features_extractor_class,
+            features_extractor_kwargs,
+            share_features_extractor,
+            normalize_images,
+            optimizer_class,
+            optimizer_kwargs,
+        )
+
+        
+
+
+
+
+        
+    def _build_mlp_extractor(self) -> None:
+
+        if self.features_extractor_class == TemporalCNN:
+            
+            lstm_hidden_size = self.features_extractor_kwargs['hidden_size']  
+            lstm_number = self.features_extractor_kwargs['n_rnn']
+            self.mlp_extractor =  CustomNetwork(self.features_dim, self.observation_space, lstm_hidden_size )
+            
+            
+
 
 
 class MultiInputActorCriticPolicy(ActorCriticPolicy):
