@@ -395,6 +395,7 @@ class CombinedExtractor(BaseFeaturesExtractor):
         observation_space: spaces.Dict,
         cnn_output_dim: int = 256,
         normalized_image: bool = False,
+        shallow: bool = True 
     ) -> None:
         # TODO we do not know features-dim here before going over all the items, so put something there. This is dirty!
         super().__init__(observation_space, features_dim=1)
@@ -404,7 +405,7 @@ class CombinedExtractor(BaseFeaturesExtractor):
         total_concat_size = 0
         for key, subspace in observation_space.spaces.items():
             if is_image_space(subspace, normalized_image=normalized_image):
-                extractors[key] = NatureCNN(subspace, features_dim=cnn_output_dim, normalized_image=normalized_image)
+                extractors[key] = NatureCNN(subspace, features_dim=cnn_output_dim, normalized_image=normalized_image, shallow=shallow)
                 total_concat_size += cnn_output_dim
             else:
                 # The observation key is a vector, flatten it if needed

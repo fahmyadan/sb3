@@ -483,6 +483,9 @@ def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], device: th.devi
         return th.as_tensor(obs, device=device)
     elif isinstance(obs, dict):
         return {key: th.as_tensor(_obs, device=device) for (key, _obs) in obs.items()}
+    elif isinstance(obs, tuple):
+        return {"kinematics": th.as_tensor(obs[0], device= device), "ttc": th.as_tensor(obs[1], device= device)}
+
     else:
         raise Exception(f"Unrecognized type of observation {type(obs)}")
 

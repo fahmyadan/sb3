@@ -117,6 +117,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         if self.rollout_buffer_class is None:
             if isinstance(self.observation_space, spaces.Dict):
                 self.rollout_buffer_class = DictRolloutBuffer
+            elif isinstance(self.observation_space, spaces.Tuple):
+                self.observation_space = spaces.Dict({"kinematics": self.observation_space[0], "ttc": self.observation_space[1]})
+                self.rollout_buffer_class = DictRolloutBuffer
             else:
                 self.rollout_buffer_class = RolloutBuffer
 
@@ -219,6 +222,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     with th.no_grad():
                         terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
                     rewards[idx] += self.gamma * terminal_value
+                    
+            if isinstance(self._last_obs, tuple):
+                self._last_obs = {"kinematics": self._last_obs[0], "ttc": self._last_obs[1]}
 
             rollout_buffer.add(
                 self._last_obs,  # type: ignore[arg-type]

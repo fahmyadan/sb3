@@ -298,7 +298,7 @@ class BasePolicy(BaseModel, ABC):
     def __init__(self, *args, squash_output: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self._squash_output = squash_output
-        self.features_extractor_class = self._get_feats_from_name(args[2])
+        # self.features_extractor_class = self._get_feats_from_name(args[2])
 
     @staticmethod
     def _dummy_schedule(progress_remaining: float) -> float:
