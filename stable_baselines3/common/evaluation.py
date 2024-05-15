@@ -102,10 +102,11 @@ def evaluate_policy(
                 info = infos[i]
                 episode_starts[i] = done
 
-                if callback is not None:
-                    callback(locals(), globals())
+                
 
                 if dones[i]:
+                    if callback is not None:
+                        callback(locals(), globals())
                     if is_monitor_wrapped:
                         # Atari wrapper can send a "done" signal when
                         # the agent loses a life, but it does not correspond
