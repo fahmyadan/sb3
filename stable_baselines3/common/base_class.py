@@ -156,6 +156,7 @@ class BaseAlgorithm(ABC):
         self._stats_window_size = stats_window_size
         self.ep_info_buffer = None  # type: Optional[deque]
         self.ep_success_buffer = None  # type: Optional[deque]
+        self.ep_crash_buffer = None
         # For logging (and TD3 delayed updates)
         self._n_updates = 0  # type: int
         # Whether the user passed a custom logger or not
@@ -404,6 +405,7 @@ class BaseAlgorithm(ABC):
             # Initialize buffers if they don't exist, or reinitialize if resetting counters
             self.ep_info_buffer = deque(maxlen=self._stats_window_size)
             self.ep_success_buffer = deque(maxlen=self._stats_window_size)
+            self.ep_crash_buffer = deque(maxlen=self._stats_window_size)
 
         if self.action_noise is not None:
             self.action_noise.reset()
@@ -450,11 +452,14 @@ class BaseAlgorithm(ABC):
             dones = np.array([False] * len(infos))
         for idx, info in enumerate(infos):
             maybe_ep_info = info.get("episode")
-            maybe_is_success = info.get("is_success")
+            maybe_is_success = info.get("arrived")
+            maybe_is_crashed = info.get('crashed')
             if maybe_ep_info is not None:
                 self.ep_info_buffer.extend([maybe_ep_info])
             if maybe_is_success is not None and dones[idx]:
                 self.ep_success_buffer.append(maybe_is_success)
+            if maybe_is_crashed is not None and dones[idx]:
+                self.ep_crash_buffer.append(maybe_is_crashed)
 
     def get_env(self) -> Optional[VecEnv]:
         """
